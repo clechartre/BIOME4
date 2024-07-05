@@ -78,7 +78,7 @@ real(sp), dimension(500) :: output
 integer :: ompchunk
 logical :: diag
 
-real(sp), dimension(2) :: rng
+real(sp), dimension(2) :: rng = [0.0_sp, 0.0_sp]
 
 namelist / joboptions / climatefile, soilfile, co2
 
@@ -108,7 +108,7 @@ status = nf90_inq_dimid(ncid, 'lon', dimid) ! returns the ID of a netCDf dimensi
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got lon dimid:', dimid
 
-status = nf90_inquire_dimension(ncid, dimid, len=xlen) ! returns name and length of anetCDF dimension
+status = nf90_inquire_dimension(ncid, dimid, len=xlen) ! returns name and length of a netCDF dimension
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got lon dimension length:', xlen
 
@@ -132,6 +132,19 @@ allocate(lon(xlen))
 allocate(lat(ylen))
 print *, 'Allocated lon and lat arrays'
 
+! Read longitude and latitude variables
+status = nf90_inq_varid(ncid, 'lon', varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_get_var(ncid, varid, lon)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_inq_varid(ncid, 'lat', varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_get_var(ncid, varid, lat)
+if (status /= nf90_noerr) call handle_err(status)
+
 !-------------------------------------------------------
 
 call getarg(2, coordstring)
@@ -146,36 +159,22 @@ if (coordstring == 'alldata') then
 
 else
 
-  call parsecoords(coordstring, boundingbox)
-  print *, 'Parsed coordinates:', boundingbox
-
+  call parsecoords(coordstring,boundingbox)
+ 
   srtx = nint(boundingbox(1))
   srty = nint(boundingbox(3))
-  cntx = 1 + nint(boundingbox(2) - boundingbox(1))
-  cnty = 1 + nint(boundingbox(4) - boundingbox(3))
+  cntx = nint(boundingbox(2) - boundingbox(1))
+  cnty = nint(boundingbox(4) - boundingbox(3))
+
+  print *, 'srtx', srtx
+  print *, 'srty', srty
+  print *, 'cntx', cntx
+  print *, 'cnty', cnty
 
 end if
 
 endx = srtx + cntx - 1
 endy = srty + cnty - 1
-
-! Adjust the indices if they are out of bounds
-if (srtx < 1) then
-  cntx = cntx - (1 - srtx)
-  srtx = 1
-end if
-if (srty < 1) then
-  cnty = cnty - (1 - srty)
-  srty = 1
-end if
-if (endx > xlen) then
-  cntx = cntx - (endx - xlen)
-  endx = xlen
-end if
-if (endy > ylen) then
-  cnty = cnty - (endy - ylen)
-  endy = ylen
-end if
 
 write(0, *) srtx, srty, cntx, cnty
 print *, 'Bounding box:', srtx, srty, cntx, cnty
@@ -184,7 +183,6 @@ print *, 'Bounding box:', srtx, srty, cntx, cnty
 scale_factor = 1.0
 add_offset = 0.0
 missing = -9999.0 
-
 
 allocate(elv(cntx, cnty))
 allocate(tmin(cntx, cnty))
@@ -229,16 +227,9 @@ if (status /= nf90_noerr) then
 end if
 print *, 'Got temperature varid:', varid
 
-! Check bounds before reading the temperature variable
-print *, 'Checking bounds for temperature variable'
-if (srtx < 1 .or. srty < 1 .or. srtx + cntx - 1 > xlen .or. srty + cnty - 1 > ylen) then
-    print *, 'Error: Start and count indices are out of bounds.'
-    stop
-end if
-
 print *, 'Reading temperature variable'
 
-status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1], count=[cntx, cnty, tlen]) 
+status = nf90_get_var(ncid, varid, ivar, start=[1, 1,1], count=[cntx, cnty, tlen]) 
 if (status /= nf90_noerr) call handle_err(status)
 
 ! Check and get 'scale_factor' if it exists
@@ -283,7 +274,7 @@ end if
 print *, 'Got precipitation varid:', varid
 
 print *, 'Reading precipitation variable'
-status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1],  count=[cntx, cnty, tlen])
+status = nf90_get_var(ncid, varid, ivar, start=[1, 1,1],  count=[cntx, cnty, tlen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! Check and get 'scale_factor' if it exists
@@ -327,7 +318,7 @@ end if
 print *, 'Got cloud percent varid:', varid
 
 print *, 'Reading cloud percent variable'
-status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1], count=[cntx, cnty, tlen])
+status = nf90_get_var(ncid, varid, ivar, start=[1, 1,1], count=[cntx, cnty, tlen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! Check and get 'scale_factor' if it exists
@@ -367,7 +358,7 @@ print *, 'Minimum temperature varid status:', status
 if (status == nf90_noerr) then ! tmin is present, we will read it from the file 
 
   print *, 'Reading minimum temperature variable'
-  status = nf90_get_var(ncid, varid, ivar(:,:,1), start=[srtx, srty,1], count=[cntx, cnty])
+  status = nf90_get_var(ncid, varid, ivar(:,:,1), start=[1, 1,1], count=[cntx, cnty])
   if (status /= nf90_noerr) call handle_err(status)
 
   ! Check and get 'scale_factor' if it exists
@@ -446,7 +437,7 @@ if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got whc varid:', varid
 
 print *, 'Reading whc variable'
-status = nf90_get_var(ncid, varid, whc, start=[srtx, srty,1], count=[cntx, cnty, llen])
+status = nf90_get_var(ncid, varid, whc, start=[1, 1,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Read whc variable'
 
@@ -455,7 +446,7 @@ if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got perc varid:', varid
 
 print *, 'Reading perc variable'
-status = nf90_get_var(ncid, varid, ksat, start=[srtx, srty,1], count=[cntx, cnty, llen])
+status = nf90_get_var(ncid, varid, ksat, start=[1, 1,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Read perc variable'
 
