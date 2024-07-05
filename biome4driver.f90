@@ -204,7 +204,7 @@ status = nf90_inq_varid(ncid, 'elv', varid)
 if (status == nf90_noerr) then
 
   print *, 'Reading elevation variable'
-  status = nf90_get_var(ncid, varid, elv, start=[srtx, srty, 1], count=[cntx, cnty])
+  status = nf90_get_var(ncid, varid, elv, start=[srtx, srty,1], count=[cntx, cnty])
   if (status /= nf90_noerr) call handle_err(status)
   print *, 'Read elevation variable'
 
@@ -308,7 +308,7 @@ if (status == nf90_noerr) then
 end if
 
 where (ivar /= missing)
-  temp = real(ivar) * scale_factor + add_offset
+  prec = real(ivar) * scale_factor + add_offset
 end where
 print *, 'Applied precipitation scale and offset'
 
@@ -352,7 +352,7 @@ if (status == nf90_noerr) then
 end if
 
 where (ivar /= missing)
-  temp = real(ivar) * scale_factor + add_offset
+  cldp = real(ivar) * scale_factor + add_offset
 end where
 print *, 'Applied cloud percent scale and offset'
 
@@ -391,8 +391,8 @@ if (status == nf90_noerr) then ! tmin is present, we will read it from the file
     if (status /= nf90_noerr) call handle_err(status)
   end if
 
-  where (ivar /= missing)
-    temp = real(ivar) * scale_factor + add_offset
+  where (ivar(:,:,1) /= missing)
+    tmin = real(ivar(:,:,1)) * scale_factor + add_offset
   end where
   print *, 'Applied tmin scale and offset'
 
