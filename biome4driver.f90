@@ -68,11 +68,10 @@ character(45) :: coordstring
 
 real(dp), dimension(4) :: boundingbox
 
-integer :: x,y
-integer :: i,j
+integer :: x, y
+integer :: i, j
 
 ! biome4 arguments; for catalog, see bottom of this code
-
 real(sp), dimension(50)  :: input
 real(sp), dimension(500) :: output
 
@@ -160,8 +159,32 @@ end if
 endx = srtx + cntx - 1
 endy = srty + cnty - 1
 
+! Adjust the indices if they are out of bounds
+if (srtx < 1) then
+  cntx = cntx - (1 - srtx)
+  srtx = 1
+end if
+if (srty < 1) then
+  cnty = cnty - (1 - srty)
+  srty = 1
+end if
+if (endx > xlen) then
+  cntx = cntx - (endx - xlen)
+  endx = xlen
+end if
+if (endy > ylen) then
+  cnty = cnty - (endy - ylen)
+  endy = ylen
+end if
+
 write(0, *) srtx, srty, cntx, cnty
 print *, 'Bounding box:', srtx, srty, cntx, cnty
+
+! initialize default values for scale_factor, offset and missing values 
+scale_factor = 1.0
+add_offset = 0.0
+missing = -9999.0 
+
 
 allocate(elv(cntx, cnty))
 allocate(tmin(cntx, cnty))
@@ -181,7 +204,7 @@ status = nf90_inq_varid(ncid, 'elv', varid)
 if (status == nf90_noerr) then
 
   print *, 'Reading elevation variable'
-  status = nf90_get_var(ncid, varid, elv, start=[srtx, srty], count=[cntx, cnty])
+  status = nf90_get_var(ncid, varid, elv, start=[srtx, srty, 1], count=[cntx, cnty])
   if (status /= nf90_noerr) call handle_err(status)
   print *, 'Read elevation variable'
 
@@ -206,25 +229,44 @@ if (status /= nf90_noerr) then
 end if
 print *, 'Got temperature varid:', varid
 
+! Check bounds before reading the temperature variable
+print *, 'Checking bounds for temperature variable'
+if (srtx < 1 .or. srty < 1 .or. srtx + cntx - 1 > xlen .or. srty + cnty - 1 > ylen) then
+    print *, 'Error: Start and count indices are out of bounds.'
+    stop
+end if
+
 print *, 'Reading temperature variable'
-status = nf90_get_var(ncid, varid, ivar, count=[cntx, cnty, tlen]) ! the issue lies with srtx and srty
+
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1], count=[cntx, cnty, tlen]) 
 if (status /= nf90_noerr) call handle_err(status)
 
-! Removed the below part of all other sections to see how far the program can go before I come fix this 
-! status = nf90_get_att(ncid, varid, 'scale_factor', scale_factor)
-! if (status /= nf90_noerr) call handle_err(status)
+! Check and get 'scale_factor' if it exists
+status = nf90_get_att(ncid,varid,'scale_factor',scale_factor)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'scale_factor',scale_factor)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
-! status = nf90_get_att(ncid, varid, 'add_offset', add_offset)
-! if (status /= nf90_noerr) call handle_err(status)
+! Check and get 'add_offset' attribute if it exists
+status = nf90_get_att(ncid,varid,'add_offset',add_offset)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid,'add_offset',add_offset)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
-! status = nf90_get_att(ncid, varid, 'missing_value', missing)
-! if (status /= nf90_noerr) call handle_err(status)
+! Check and get 'missing_value' attribute if it exists
+status = nf90_get_att(ncid, varid,'missing_value',missing)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid,'missing_value',missing)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
-! print *, 'Applying temperature scale and offset'
-! where (ivar /= missing)
+print *, 'Applying temperature scale and offset'
+where (ivar /= missing)
   temp = real(ivar) * scale_factor + add_offset
-! end where
-! print *, 'Applied temperature scale and offset'
+end where
+print *, 'Applied temperature scale and offset'
 
 !-------------------------------------------------------
 ! precipitation
@@ -241,8 +283,34 @@ end if
 print *, 'Got precipitation varid:', varid
 
 print *, 'Reading precipitation variable'
-status = nf90_get_var(ncid, varid, ivar,  count=[cntx, cnty, tlen])
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1],  count=[cntx, cnty, tlen])
 if (status /= nf90_noerr) call handle_err(status)
+
+! Check and get 'scale_factor' if it exists
+status = nf90_get_att(ncid,varid,'scale_factor',scale_factor)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'scale_factor',scale_factor)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
+
+! Check and get 'add_offset' attribute if it exists
+status = nf90_get_att(ncid,varid,'add_offset',add_offset)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'add_offset',add_offset)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
+
+! Check and get 'missing_value' attribute if it exists
+status = nf90_get_att(ncid, varid, 'missing_value', missing)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'missing_value', missing)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
+
+where (ivar /= missing)
+  temp = real(ivar) * scale_factor + add_offset
+end where
+print *, 'Applied precipitation scale and offset'
 
 !-------------------------------------------------------
 ! cloud percent
@@ -259,8 +327,34 @@ end if
 print *, 'Got cloud percent varid:', varid
 
 print *, 'Reading cloud percent variable'
-status = nf90_get_var(ncid, varid, ivar,  count=[cntx, cnty, tlen])
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1], count=[cntx, cnty, tlen])
 if (status /= nf90_noerr) call handle_err(status)
+
+! Check and get 'scale_factor' if it exists
+status = nf90_get_att(ncid,varid,'scale_factor',scale_factor)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'scale_factor',scale_factor)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
+
+! Check and get 'add_offset' attribute if it exists
+status = nf90_get_att(ncid,varid,'add_offset',add_offset)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'add_offset', add_offset)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
+
+! Check and get 'missing_value' attribute if it exists
+status = nf90_get_att(ncid, varid, 'missing_value', missing)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'missing_value', missing)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
+
+where (ivar /= missing)
+  temp = real(ivar) * scale_factor + add_offset
+end where
+print *, 'Applied cloud percent scale and offset'
 
 !-------------------------------------------------------
 ! absolute minimum temperature
@@ -273,8 +367,34 @@ print *, 'Minimum temperature varid status:', status
 if (status == nf90_noerr) then ! tmin is present, we will read it from the file 
 
   print *, 'Reading minimum temperature variable'
-  status = nf90_get_var(ncid, varid, ivar(:,:,1), count=[cntx, cnty])
+  status = nf90_get_var(ncid, varid, ivar(:,:,1), start=[srtx, srty,1], count=[cntx, cnty])
   if (status /= nf90_noerr) call handle_err(status)
+
+  ! Check and get 'scale_factor' if it exists
+  status = nf90_get_att(ncid,varid,'scale_factor',scale_factor)
+  if (status == nf90_noerr) then
+    status = nf90_get_att(ncid, varid, 'scale_factor',scale_factor)
+    if (status /= nf90_noerr) call handle_err(status)
+  end if
+
+  ! Check and get 'add_offset' attribute if it exists
+  status = nf90_get_att(ncid,varid,'add_offset',add_offset)
+  if (status == nf90_noerr) then
+    status = nf90_get_att(ncid, varid, 'add_offset', add_offset)
+    if (status /= nf90_noerr) call handle_err(status)
+  end if
+
+  ! Check and get 'missing_value' attribute if it exists
+  status = nf90_get_att(ncid, varid, 'missing_value', missing)
+  if (status == nf90_noerr) then
+    status = nf90_get_att(ncid, varid, 'missing_value', missing)
+    if (status /= nf90_noerr) call handle_err(status)
+  end if
+
+  where (ivar /= missing)
+    temp = real(ivar) * scale_factor + add_offset
+  end where
+  print *, 'Applied tmin scale and offset'
 
 
 else ! tmin is not present in the input, we will estimate it base on temperature
@@ -326,7 +446,7 @@ if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got whc varid:', varid
 
 print *, 'Reading whc variable'
-status = nf90_get_var(ncid, varid, whc, count=[cntx, cnty, llen])
+status = nf90_get_var(ncid, varid, whc, start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Read whc variable'
 
@@ -335,7 +455,7 @@ if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got perc varid:', varid
 
 print *, 'Reading perc variable'
-status = nf90_get_var(ncid, varid, ksat, count=[cntx, cnty, llen])
+status = nf90_get_var(ncid, varid, ksat, start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Read perc variable'
 
