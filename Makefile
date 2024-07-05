@@ -14,7 +14,7 @@ NC_INC = $(netcdf)/include
 
 CPPFLAGS = -I$(NC_INC)
 LDFLAGS  = -L$(NC_LIB)
-LIBS     = -L/home/lechartr/miniconda3/envs/biome/lib -lnetcdff -lcurl
+LIBS     = -L/opt/homebrew/Caskroom/miniforge/base/envs/biome4 -lnetcdff -lcurl
 
 #---------------------------------------------
 

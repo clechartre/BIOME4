@@ -104,11 +104,11 @@ status = nf90_open(climatefile, nf90_nowrite, ncid)
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Opened climate file, ncid:', ncid
 
-status = nf90_inq_dimid(ncid, 'lon', dimid)
+status = nf90_inq_dimid(ncid, 'lon', dimid) ! returns the ID of a netCDf dimension given the name of the dimension
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got lon dimid:', dimid
 
-status = nf90_inquire_dimension(ncid, dimid, len=xlen)
+status = nf90_inquire_dimension(ncid, dimid, len=xlen) ! returns name and length of anetCDF dimension
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got lon dimension length:', xlen
 
@@ -496,7 +496,6 @@ print *, 'Initialized biome, wdom, gdom, npp arrays'
 do y = 1, cnty
 
   write(0, *) ' working on row ', y, ' out of ', cnty
-  print *, 'Working on row:', y, 'out of', cnty
 
   ompchunk = 4
 
