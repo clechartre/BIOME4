@@ -156,15 +156,19 @@ if (coordstring == 'alldata') then
   srty = 1
   cntx = xlen
   cnty = ylen
+  endx = srtx + cntx - 1
+  endy = srty + cnty - 1
 
 else
 
   call parsecoords(coordstring,boundingbox)
  
-  srtx = nint(boundingbox(1))
-  srty = nint(boundingbox(3))
-  cntx = nint(boundingbox(2) - boundingbox(1))
-  cnty = nint(boundingbox(4) - boundingbox(3))
+  srtx = 1
+  srty = 1
+  cntx = 4*boundingbox(2)
+  cnty = 4*boundingbox(4)
+  endx = cntx
+  endy = cnty
 
   print *, 'srtx', srtx
   print *, 'srty', srty
@@ -173,10 +177,8 @@ else
 
 end if
 
-endx = srtx + cntx - 1
-endy = srty + cnty - 1
 
-write(0, *) srtx, srty, cntx, cnty
+write(0, *) srtx, srty, cntx, cnty, endx, endy
 print *, 'Bounding box:', srtx, srty, cntx, cnty
 
 ! initialize default values for scale_factor, offset and missing values 
@@ -208,7 +210,7 @@ if (status == nf90_noerr) then
 
 else
 
-  elv = 0.
+  elv = 01.
   print *, 'Elevation variable not found, set to 0'
 
 end if
@@ -229,7 +231,7 @@ print *, 'Got temperature varid:', varid
 
 print *, 'Reading temperature variable'
 
-status = nf90_get_var(ncid, varid, ivar, start=[1, 1,1], count=[cntx, cnty, tlen]) 
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1], count=[cntx, cnty, tlen]) 
 if (status /= nf90_noerr) call handle_err(status)
 
 ! Check and get 'scale_factor' if it exists
@@ -274,7 +276,7 @@ end if
 print *, 'Got precipitation varid:', varid
 
 print *, 'Reading precipitation variable'
-status = nf90_get_var(ncid, varid, ivar, start=[1, 1,1],  count=[cntx, cnty, tlen])
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1],  count=[cntx, cnty, tlen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! Check and get 'scale_factor' if it exists
@@ -318,7 +320,7 @@ end if
 print *, 'Got cloud percent varid:', varid
 
 print *, 'Reading cloud percent variable'
-status = nf90_get_var(ncid, varid, ivar, start=[1, 1,1], count=[cntx, cnty, tlen])
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1], count=[cntx, cnty, tlen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! Check and get 'scale_factor' if it exists
@@ -358,7 +360,7 @@ print *, 'Minimum temperature varid status:', status
 if (status == nf90_noerr) then ! tmin is present, we will read it from the file 
 
   print *, 'Reading minimum temperature variable'
-  status = nf90_get_var(ncid, varid, ivar(:,:,1), start=[1, 1,1], count=[cntx, cnty])
+  status = nf90_get_var(ncid, varid, ivar(:,:,1), start=[srtx, srty,1], count=[cntx, cnty])
   if (status /= nf90_noerr) call handle_err(status)
 
   ! Check and get 'scale_factor' if it exists
@@ -437,7 +439,7 @@ if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got whc varid:', varid
 
 print *, 'Reading whc variable'
-status = nf90_get_var(ncid, varid, whc, start=[1, 1,1], count=[cntx, cnty, llen])
+status = nf90_get_var(ncid, varid, whc, start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Read whc variable'
 
@@ -446,7 +448,7 @@ if (status /= nf90_noerr) call handle_err(status)
 print *, 'Got perc varid:', varid
 
 print *, 'Reading perc variable'
-status = nf90_get_var(ncid, varid, ksat, start=[1, 1,1], count=[cntx, cnty, llen])
+status = nf90_get_var(ncid, varid, ksat, start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 print *, 'Read perc variable'
 
@@ -574,7 +576,7 @@ if (status /= nf90_noerr) call handle_err(status)
 status = nf90_inq_varid(ncid, 'biome', varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ncid, varid, biome)
+status = nf90_put_var(ncid, varid, biome,  start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! ---
@@ -582,7 +584,7 @@ if (status /= nf90_noerr) call handle_err(status)
 status = nf90_inq_varid(ncid, 'wdom', varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ncid, varid, wdom)
+status = nf90_put_var(ncid, varid, wdom, start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! ---
@@ -590,7 +592,7 @@ if (status /= nf90_noerr) call handle_err(status)
 status = nf90_inq_varid(ncid, 'gdom', varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ncid, varid, gdom)
+status = nf90_put_var(ncid, varid, gdom, start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! ---
@@ -598,7 +600,7 @@ if (status /= nf90_noerr) call handle_err(status)
 status = nf90_inq_varid(ncid, 'npp', varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ncid, varid, npp)
+status = nf90_put_var(ncid, varid, npp,start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! ---
