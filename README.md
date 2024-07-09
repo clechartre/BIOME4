@@ -11,10 +11,10 @@ This GitHub repository contains the original FORTRAN77 computational core, a mod
 To run BIOME4 the following three arguments need to be specified on the command line following the executable _in exactly this order_:
 
 1) the name of the job options namelist file
-2) the geographic coordinates for the run in minlon/maxlon/minlat/maxlat format, e.g. -180/180/-90/90 for a global simulation.
+2) the geographic coordinates for the run in minlon/maxlon/minlat/maxlat format, e.g., -360/360/-180/180 for a global simulation.
 3) the name of the output file, e.g., output.nc
    
-Example: `./biome4 globalrun.namelist -180/180/-90/90 output.nc`
+Example: `./biome4 globalrun.namelist -360/360/-180/180 output.nc`
 
 ## Input data
 BIOME4 requires the following variables to run (in the form of gridded fields):

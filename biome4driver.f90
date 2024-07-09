@@ -1,11 +1,9 @@
 program biome4main
 
-! compile with makefile
-
 use iso_fortran_env
 use netcdf
 use coordsmod
-use netcdfmod, only : handle_err,genoutfile
+use netcdfmod, only : handle_err, genoutfile
 use parametersmod
 
 implicit none
@@ -34,8 +32,6 @@ integer(i2), allocatable, dimension(:,:)   :: biome
 integer(i2), allocatable, dimension(:,:)   :: wdom
 integer(i2), allocatable, dimension(:,:)   :: gdom
 real(sp),    allocatable, dimension(:,:,:) :: npp
-
-! real(sp),    allocatable, dimension(:,:)   :: lai
 
 real(sp) :: co2
 real(sp) :: p
@@ -72,61 +68,87 @@ character(45) :: coordstring
 
 real(dp), dimension(4) :: boundingbox
 
-integer :: x,y
-integer :: i,j
+integer :: x, y
+integer :: i, j
 
 ! biome4 arguments; for catalog, see bottom of this code
-
 real(sp), dimension(50)  :: input
 real(sp), dimension(500) :: output
 
 integer :: ompchunk
 logical :: diag
 
-real(sp), dimension(2) :: rng
+real(sp), dimension(2) :: rng = [0.0_sp, 0.0_sp]
 
-namelist / joboptions / climatefile,soilfile,co2
+namelist / joboptions / climatefile, soilfile, co2
 
 !------------------------------------------------------------------------------------------------------------
 
-call getarg(1,jobfile)
+call getarg(1, jobfile)
+print *, 'Job file:', jobfile
 
-open(10,file=jobfile,status='old')
+open(10, file=jobfile, status='old')
+print *, 'Opened job file'
 
-read(10,nml=joboptions)
+read(10, nml=joboptions)
+print *, 'Read job options from namelist'
 
 close(10)
+print *, 'Closed job file'
 
 !-------------------------------------------------------
 ! input data file size
 
-status = nf90_open(climatefile,nf90_nowrite,ncid)
+print *, 'Opening climate file:', climatefile
+status = nf90_open(climatefile, nf90_nowrite, ncid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Opened climate file, ncid:', ncid
 
-status = nf90_inq_dimid(ncid,'lon',dimid)
+status = nf90_inq_dimid(ncid, 'lon', dimid) ! returns the ID of a netCDf dimension given the name of the dimension
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got lon dimid:', dimid
 
-status = nf90_inquire_dimension(ncid,dimid,len=xlen)
+status = nf90_inquire_dimension(ncid, dimid, len=xlen) ! returns name and length of a netCDF dimension
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got lon dimension length:', xlen
 
-status = nf90_inq_dimid(ncid,'lat',dimid)
+status = nf90_inq_dimid(ncid, 'lat', dimid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got lat dimid:', dimid
 
-status = nf90_inquire_dimension(ncid,dimid,len=ylen)
+status = nf90_inquire_dimension(ncid, dimid, len=ylen)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got lat dimension length:', ylen
 
-status = nf90_inq_dimid(ncid,'time',dimid)
+status = nf90_inq_dimid(ncid, 'time', dimid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got time dimid:', dimid
 
-status = nf90_inquire_dimension(ncid,dimid,len=tlen)
+status = nf90_inquire_dimension(ncid, dimid, len=tlen)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got time dimension length:', tlen
 
 allocate(lon(xlen))
 allocate(lat(ylen))
+print *, 'Allocated lon and lat arrays'
+
+! Read longitude and latitude variables
+status = nf90_inq_varid(ncid, 'lon', varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_get_var(ncid, varid, lon)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_inq_varid(ncid, 'lat', varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_get_var(ncid, varid, lat)
+if (status /= nf90_noerr) call handle_err(status)
 
 !-------------------------------------------------------
 
-call getarg(2,coordstring)
+call getarg(2, coordstring)
+print *, 'Coordinate string:', coordstring
 
 if (coordstring == 'alldata') then
 
@@ -134,43 +156,62 @@ if (coordstring == 'alldata') then
   srty = 1
   cntx = xlen
   cnty = ylen
+  endx = srtx + cntx - 1
+  endy = srty + cnty - 1
 
 else
 
   call parsecoords(coordstring,boundingbox)
  
-  srtx = nint(boundingbox(1))
-  srty = nint(boundingbox(3))
-  cntx = 1 + nint(boundingbox(2) - boundingbox(1))
-  cnty = 1 + nint(boundingbox(4) - boundingbox(3))
+  srtx = 1
+  srty = 1
+  cntx = 4*boundingbox(2)
+  cnty = 4*boundingbox(4)
+  endx = cntx
+  endy = cnty
+
+  print *, 'srtx', srtx
+  print *, 'srty', srty
+  print *, 'cntx', cntx
+  print *, 'cnty', cnty
 
 end if
 
-endx = srtx + cntx - 1
-endy = srty + cnty - 1
- 
-write(0,*)srtx,srty,cntx,cnty
 
-allocate(elv(cntx,cnty))
-allocate(tmin(cntx,cnty))
+write(0, *) srtx, srty, cntx, cnty, endx, endy
+print *, 'Bounding box:', srtx, srty, cntx, cnty
 
-allocate(ivar(cntx,cnty,tlen))
-allocate(temp(cntx,cnty,tlen))
-allocate(prec(cntx,cnty,tlen))
-allocate(cldp(cntx,cnty,tlen))
+! initialize default values for scale_factor, offset and missing values 
+scale_factor = 1.0
+add_offset = 0.0
+missing = -9999.0 
+
+allocate(elv(cntx, cnty))
+allocate(tmin(cntx, cnty))
+print *, 'Allocated elv and tmin arrays'
+
+allocate(ivar(cntx, cnty, tlen))
+allocate(temp(cntx, cnty, tlen))
+allocate(prec(cntx, cnty, tlen))
+allocate(cldp(cntx, cnty, tlen))
+print *, 'Allocated ivar, temp, prec, cldp arrays'
 
 !-------------------------------------------------------
 ! elevation
 
-status = nf90_inq_varid(ncid,'elv',varid)
+print *, 'Inquiring elevation variable'
+status = nf90_inq_varid(ncid, 'elv', varid)
 if (status == nf90_noerr) then
 
-  status = nf90_get_var(ncid,varid,elv,start=[srtx,srty],count=[cntx,cnty])
+  print *, 'Reading elevation variable'
+  status = nf90_get_var(ncid, varid, elv, start=[srtx, srty,1], count=[cntx, cnty])
   if (status /= nf90_noerr) call handle_err(status)
-  
+  print *, 'Read elevation variable'
+
 else
 
-  elv = 0.
+  elv = 01.
+  print *, 'Elevation variable not found, set to 0'
 
 end if
 
@@ -178,103 +219,183 @@ end if
 ! temperature
 
 temp = -9999.
+print *, 'Inquiring temperature variable'
 
-status = nf90_inq_varid(ncid,'tmp',varid)
+status = nf90_inq_varid(ncid, 'temp', varid)
+print *, 'Temperature varid status:', status
+if (status /= nf90_noerr) then
+    print *, 'Error: Temperature variable not found.'
+    call handle_err(status)
+end if
+print *, 'Got temperature varid:', varid
+
+print *, 'Reading temperature variable'
+
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1], count=[cntx, cnty, tlen]) 
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_get_var(ncid,varid,ivar,start=[srtx,srty,1],count=[cntx,cnty,tlen])
-if (status /= nf90_noerr) call handle_err(status)
-
+! Check and get 'scale_factor' if it exists
 status = nf90_get_att(ncid,varid,'scale_factor',scale_factor)
-if (status /= nf90_noerr) call handle_err(status)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'scale_factor',scale_factor)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
+! Check and get 'add_offset' attribute if it exists
 status = nf90_get_att(ncid,varid,'add_offset',add_offset)
-if (status /= nf90_noerr) call handle_err(status)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid,'add_offset',add_offset)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
-status = nf90_get_att(ncid,varid,'missing_value',missing)
-if (status /= nf90_noerr) call handle_err(status)
+! Check and get 'missing_value' attribute if it exists
+status = nf90_get_att(ncid, varid,'missing_value',missing)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid,'missing_value',missing)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
+print *, 'Applying temperature scale and offset'
 where (ivar /= missing)
   temp = real(ivar) * scale_factor + add_offset
 end where
+print *, 'Applied temperature scale and offset'
 
 !-------------------------------------------------------
 ! precipitation
 
 prec = -9999.
+print *, 'Inquiring precipitation variable'
 
-status = nf90_inq_varid(ncid,'pre',varid)
+status = nf90_inq_varid(ncid, 'prec', varid)
+print *, 'Precipitation varid status:', status
+if (status /= nf90_noerr) then
+    print *, 'Error: Precipitation variable not found.'
+    call handle_err(status)
+end if
+print *, 'Got precipitation varid:', varid
+
+print *, 'Reading precipitation variable'
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1],  count=[cntx, cnty, tlen])
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_get_var(ncid,varid,ivar,start=[srtx,srty,1],count=[cntx,cnty,tlen])
-if (status /= nf90_noerr) call handle_err(status)
-
+! Check and get 'scale_factor' if it exists
 status = nf90_get_att(ncid,varid,'scale_factor',scale_factor)
-if (status /= nf90_noerr) call handle_err(status)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'scale_factor',scale_factor)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
+! Check and get 'add_offset' attribute if it exists
 status = nf90_get_att(ncid,varid,'add_offset',add_offset)
-if (status /= nf90_noerr) call handle_err(status)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'add_offset',add_offset)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
-status = nf90_get_att(ncid,varid,'missing_value',missing)
-if (status /= nf90_noerr) call handle_err(status)
+! Check and get 'missing_value' attribute if it exists
+status = nf90_get_att(ncid, varid, 'missing_value', missing)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'missing_value', missing)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
 where (ivar /= missing)
   prec = real(ivar) * scale_factor + add_offset
 end where
+print *, 'Applied precipitation scale and offset'
 
 !-------------------------------------------------------
 ! cloud percent
 
 cldp = -9999.
+print *, 'Inquiring cloud percent variable'
 
-status = nf90_inq_varid(ncid,'cld',varid)
+status = nf90_inq_varid(ncid, 'sun', varid)
+print *, 'Cloud percent varid status:', status
+if (status /= nf90_noerr) then
+    print *, 'Error: Cloud percent variable not found.'
+    call handle_err(status)
+end if
+print *, 'Got cloud percent varid:', varid
+
+print *, 'Reading cloud percent variable'
+status = nf90_get_var(ncid, varid, ivar, start=[srtx, srty,1], count=[cntx, cnty, tlen])
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_get_var(ncid,varid,ivar,start=[srtx,srty,1],count=[cntx,cnty,tlen])
-if (status /= nf90_noerr) call handle_err(status)
-
+! Check and get 'scale_factor' if it exists
 status = nf90_get_att(ncid,varid,'scale_factor',scale_factor)
-if (status /= nf90_noerr) call handle_err(status)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'scale_factor',scale_factor)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
+! Check and get 'add_offset' attribute if it exists
 status = nf90_get_att(ncid,varid,'add_offset',add_offset)
-if (status /= nf90_noerr) call handle_err(status)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'add_offset', add_offset)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
-status = nf90_get_att(ncid,varid,'missing_value',missing)
-if (status /= nf90_noerr) call handle_err(status)
+! Check and get 'missing_value' attribute if it exists
+status = nf90_get_att(ncid, varid, 'missing_value', missing)
+if (status == nf90_noerr) then
+  status = nf90_get_att(ncid, varid, 'missing_value', missing)
+  if (status /= nf90_noerr) call handle_err(status)
+end if
 
 where (ivar /= missing)
   cldp = real(ivar) * scale_factor + add_offset
 end where
+print *, 'Applied cloud percent scale and offset'
 
 !-------------------------------------------------------
 ! absolute minimum temperature
 
 tmin = -9999.
+print *, 'Inquiring minimum temperature variable'
 
-status = nf90_inq_varid(ncid,'cld',varid)
+status = nf90_inq_varid(ncid, 'tmin', varid)
+print *, 'Minimum temperature varid status:', status
 if (status == nf90_noerr) then ! tmin is present, we will read it from the file 
 
-  status = nf90_get_var(ncid,varid,ivar(:,:,1),start=[srtx,srty,1],count=[cntx,cnty])
+  print *, 'Reading minimum temperature variable'
+  status = nf90_get_var(ncid, varid, ivar(:,:,1), start=[srtx, srty,1], count=[cntx, cnty])
   if (status /= nf90_noerr) call handle_err(status)
 
+  ! Check and get 'scale_factor' if it exists
   status = nf90_get_att(ncid,varid,'scale_factor',scale_factor)
-  if (status /= nf90_noerr) call handle_err(status)
+  if (status == nf90_noerr) then
+    status = nf90_get_att(ncid, varid, 'scale_factor',scale_factor)
+    if (status /= nf90_noerr) call handle_err(status)
+  end if
 
+  ! Check and get 'add_offset' attribute if it exists
   status = nf90_get_att(ncid,varid,'add_offset',add_offset)
-  if (status /= nf90_noerr) call handle_err(status)
+  if (status == nf90_noerr) then
+    status = nf90_get_att(ncid, varid, 'add_offset', add_offset)
+    if (status /= nf90_noerr) call handle_err(status)
+  end if
 
-  status = nf90_get_att(ncid,varid,'missing_value',missing)
-  if (status /= nf90_noerr) call handle_err(status)
+  ! Check and get 'missing_value' attribute if it exists
+  status = nf90_get_att(ncid, varid, 'missing_value', missing)
+  if (status == nf90_noerr) then
+    status = nf90_get_att(ncid, varid, 'missing_value', missing)
+    if (status /= nf90_noerr) call handle_err(status)
+  end if
 
   where (ivar(:,:,1) /= missing)
     tmin = real(ivar(:,:,1)) * scale_factor + add_offset
   end where
+  print *, 'Applied tmin scale and offset'
+
 
 else ! tmin is not present in the input, we will estimate it base on temperature
 
-  allocate(tcm(cntx,cnty))
+  print *, 'Minimum temperature variable not found, estimating from temperature'
+  allocate(tcm(cntx, cnty))
 
-  tcm = minval(temp,dim=3)
+  tcm = minval(temp, dim=3)
 
   where (tcm /= -9999.)
 
@@ -283,94 +404,114 @@ else ! tmin is not present in the input, we will estimate it base on temperature
   end where
 
   deallocate(tcm)
+  print *, 'Estimated minimum temperature'
 
 end if
 
 !-------------------------------------------------------
 
+print *, 'Closing climate file'
 status = nf90_close(ncid)
+if (status /= nf90_noerr) call handle_err(status)
+print *, 'Closed climate file'
 
 !-------------------------------------------------------
 
-status = nf90_open(soilfile,nf90_nowrite,ncid)
+print *, 'Opening soil file:', soilfile
+status = nf90_open(soilfile, nf90_nowrite, ncid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Opened soil file, ncid:', ncid
 
-status = nf90_inq_dimid(ncid,'layer',dimid)
+status = nf90_inq_dimid(ncid, 'soil_layer', dimid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got soil layer dimid:', dimid
 
-status = nf90_inquire_dimension(ncid,dimid,len=llen)
+status = nf90_inquire_dimension(ncid, dimid, len=llen)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got soil layer length:', llen
 
-allocate(whc(cntx,cnty,llen))
-allocate(ksat(cntx,cnty,llen))
+allocate(whc(cntx, cnty, llen))
+allocate(ksat(cntx, cnty, llen))
+print *, 'Allocated whc and ksat arrays'
 
-status = nf90_inq_varid(ncid,'whc',varid)
+status = nf90_inq_varid(ncid, 'whc', varid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got whc varid:', varid
 
-status = nf90_get_var(ncid,varid,whc,start=[srtx,srty,1],count=[cntx,cnty,llen])
+print *, 'Reading whc variable'
+status = nf90_get_var(ncid, varid, whc, start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Read whc variable'
 
-status = nf90_inq_varid(ncid,'perc',varid)
+status = nf90_inq_varid(ncid, 'perc', varid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Got perc varid:', varid
 
-status = nf90_get_var(ncid,varid,ksat,start=[srtx,srty,1],count=[cntx,cnty,llen])
+print *, 'Reading perc variable'
+status = nf90_get_var(ncid, varid, ksat, start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Read perc variable'
 
 status = nf90_close(ncid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Closed soil file'
 
 !-------------------------------------------------------
 
-call getarg(3,outfile)
+call getarg(3, outfile)
+print *, 'Output file:', outfile
 
-call genoutfile(outfile,cntx,cnty,ncid)
+call genoutfile(outfile, cntx, cnty, ncid)
+print *, 'Generated output file, ncid:', ncid
 
 if (trim(outfile) == 'diag.nc') then
   diag = .true. ! iopt
+  print *, 'Diagnostic mode on'
 else
   diag = .false.  ! iopt
+  print *, 'Diagnostic mode off'
 end if
 
 !-------------------------------------------------------
 
-allocate(biome(cntx,cnty))
-allocate(wdom(cntx,cnty))
-allocate(gdom(cntx,cnty))
-allocate(npp(cntx,cnty,13))
+allocate(biome(cntx, cnty))
+allocate(wdom(cntx, cnty))
+allocate(gdom(cntx, cnty))
+allocate(npp(cntx, cnty, 13))
+print *, 'Allocated biome, wdom, gdom, npp arrays'
 
 biome = missing
 wdom  = missing
 gdom  = missing
 npp   = -9999.
+print *, 'Initialized biome, wdom, gdom, npp arrays'
 
-! lai = -9999.
+do y = 1, cnty
 
-do y = 1,cnty
+  write(0, *) ' working on row ', y, ' out of ', cnty
 
-  write(0,*)' working on row ',y,'out of ',cnty
+  ompchunk = 4
 
-  ompchunk = 4 !min(8,sblock_out(2))
+  !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(p, input, output)
+  !$OMP DO SCHEDULE(DYNAMIC, ompchunk)
 
-  !$OMP PARALLEL DEFAULT(SHARED) PRIVATE(p,input,output)
-  !$OMP DO SCHEDULE(DYNAMIC,ompchunk)
-
-  do x = 1,cntx
+  do x = 1, cntx
   
-    if (temp(x,y,1) == -9999.) cycle
+    if (temp(x, y, 1) == -9999.) cycle
 
-    p = p0 * (1. - (g * elv(x,y)) / (cp * T0))**(cp * M / R0)
+    p = p0 * (1. - (g * elv(x, y)) / (cp * T0))**(cp * M / R0)
   
     input(1)     = lat(y)
     input(2)     = co2
     input(3)     = p
-    input(4)     = tmin(x,y)
-    input(5:16)  = temp(x,y,:)
-    input(17:27) = prec(x,y,:)
-    input(28:40) = cldp(x,y,:)
-    input(41)    = sum(Ksat(x,y,1:3)) / 3.
-    input(42)    = sum(Ksat(x,y,4:6)) / 3.
-    input(43)    = sum(whc(x,y,1:3))
-    input(44)    = sum(whc(x,y,4:6))
+    input(4)     = tmin(x, y)
+    input(5:16)  = temp(x, y, :)
+    input(17:27) = prec(x, y, :)
+    input(28:40) = cldp(x, y, :)
+    input(41)    = sum(ksat(x, y, 1:3)) / 3.
+    input(42)    = sum(ksat(x, y, 4:6)) / 3.
+    input(43)    = sum(whc(x, y, 1:3))
+    input(44)    = sum(whc(x, y, 4:6))
     input(49)    = lon(x)
     
     if (diag) then
@@ -379,12 +520,12 @@ do y = 1,cnty
       input(46) = 0.  ! diagnostic mode off
     end if
 
-    call biome4(input,output)
+    call biome4(input, output)
         
-    biome(x,y) = nint(output(1))
-    wdom(x,y)  = nint(output(12))
-    gdom(x,y)  = nint(output(13))
-    npp(x,y,:) = output(60:72)
+    biome(x, y) = nint(output(1))
+    wdom(x, y)  = nint(output(12))
+    gdom(x, y)  = nint(output(13))
+    npp(x, y, :) = output(60:72)
     
   end do
 
@@ -395,76 +536,78 @@ end do
 
 !-------------------------------------------------------
 
-write(0,*)'writing'
+write(0, *) 'writing'
+print *, 'Writing results to output file'
 
-status = nf90_inq_varid(ncid,'lon',varid)
+status = nf90_inq_varid(ncid, 'lon', varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ncid,varid,lon(srtx:endx))
+status = nf90_put_var(ncid, varid, lon(srtx:endx))
 if (status /= nf90_noerr) call handle_err(status)
 
-rng = [minval(lon(srtx:endx)),maxval(lon(srtx:endx))]
+rng = [minval(lon(srtx:endx)), maxval(lon(srtx:endx))]
 
-status = nf90_put_att(ncid,varid,'actual_range',rng)
-if (status /= nf90_noerr) call handle_err(status)
-
-! ---
-
-status = nf90_inq_varid(ncid,'lat',varid)
-if (status /= nf90_noerr) call handle_err(status)
-
-status = nf90_put_var(ncid,varid,lat(srty:endy))
-if (status /= nf90_noerr) call handle_err(status)
-
-rng = [minval(lat(srty:endy)),maxval(lat(srty:endy))]
-
-status = nf90_put_att(ncid,varid,'actual_range',rng)
+status = nf90_put_att(ncid, varid, 'actual_range', rng)
 if (status /= nf90_noerr) call handle_err(status)
 
 ! ---
 
-status = nf90_inq_varid(ncid,'pft',varid)
+status = nf90_inq_varid(ncid, 'lat', varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ncid,varid,[(i,i=1,13)])
+status = nf90_put_var(ncid, varid, lat(srty:endy))
 if (status /= nf90_noerr) call handle_err(status)
 
-! ---
+rng = [minval(lat(srty:endy)), maxval(lat(srty:endy))]
 
-status = nf90_inq_varid(ncid,'biome',varid)
-if (status /= nf90_noerr) call handle_err(status)
-
-status = nf90_put_var(ncid,varid,biome)
+status = nf90_put_att(ncid, varid, 'actual_range', rng)
 if (status /= nf90_noerr) call handle_err(status)
 
 ! ---
 
-status = nf90_inq_varid(ncid,'wdom',varid)
+status = nf90_inq_varid(ncid, 'pft', varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ncid,varid,wdom)
-if (status /= nf90_noerr) call handle_err(status)
-
-! ---
-
-status = nf90_inq_varid(ncid,'gdom',varid)
-if (status /= nf90_noerr) call handle_err(status)
-
-status = nf90_put_var(ncid,varid,gdom)
+status = nf90_put_var(ncid, varid, [(i, i=1, 13)])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! ---
 
-status = nf90_inq_varid(ncid,'npp',varid)
+status = nf90_inq_varid(ncid, 'biome', varid)
 if (status /= nf90_noerr) call handle_err(status)
 
-status = nf90_put_var(ncid,varid,npp)
+status = nf90_put_var(ncid, varid, biome,  start=[srtx, srty,1], count=[cntx, cnty, llen])
+if (status /= nf90_noerr) call handle_err(status)
+
+! ---
+
+status = nf90_inq_varid(ncid, 'wdom', varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_put_var(ncid, varid, wdom, start=[srtx, srty,1], count=[cntx, cnty, llen])
+if (status /= nf90_noerr) call handle_err(status)
+
+! ---
+
+status = nf90_inq_varid(ncid, 'gdom', varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_put_var(ncid, varid, gdom, start=[srtx, srty,1], count=[cntx, cnty, llen])
+if (status /= nf90_noerr) call handle_err(status)
+
+! ---
+
+status = nf90_inq_varid(ncid, 'npp', varid)
+if (status /= nf90_noerr) call handle_err(status)
+
+status = nf90_put_var(ncid, varid, npp,start=[srtx, srty,1], count=[cntx, cnty, llen])
 if (status /= nf90_noerr) call handle_err(status)
 
 ! ---
 
 status = nf90_close(ncid)
 if (status /= nf90_noerr) call handle_err(status)
+print *, 'Closed output file'
 
 !------------------------------------------------------------------------------------------------------------
 ! catalog of arguments 

@@ -1,23 +1,20 @@
-# makefile for BIOME4, summer 2020
+FC = $(CONDA_PREFIX)/bin/gfortran
+FCFLAGS  = -v  # Verbose output
 
-FC=gfortran
-FCFLAGS  = 
-
-# use the command "nf-config --all" to find the location of your netCDF installation
-# and enter the path next to " --prefix    ->" on the line below
-
-netcdf=/home/public/easybuild/software/netCDF-Fortran/4.5.4-gompi-2021b
+# Use the paths from your Conda environment
+# Replace <conda_env_path> with the actual path from nf-config --all
+netcdf = $(CONDA_PREFIX)
 
 # should not need to modify anything below this line
 
 #---------------------------------------------
 
-NC_LIB=$(netcdf)/lib
-NC_INC=$(netcdf)/include
+NC_LIB = $(netcdf)/lib
+NC_INC = $(netcdf)/include
 
 CPPFLAGS = -I$(NC_INC)
 LDFLAGS  = -L$(NC_LIB)
-LIBS     = -lnetcdff
+LIBS     = -L/opt/homebrew/Caskroom/miniforge/base/envs/biome4 -lnetcdff -lcurl
 
 #---------------------------------------------
 
@@ -47,3 +44,16 @@ biome4: $(OBJS)
 
 clean::	
 	-rm *.o *.mod
+
+# Debugging print statements
+debug::
+	@echo "NetCDF Library Path: $(NC_LIB)"
+	@echo "NetCDF Include Path: $(NC_INC)"
+	@echo "CPPFLAGS: $(CPPFLAGS)"
+	@echo "LDFLAGS: $(LDFLAGS)"
+	@echo "LIBS: $(LIBS)"
+
+# Check for netcdf.mod file
+check::
+	@echo "Checking for netcdf.mod in $(NC_INC)"
+	@if [ -f "$(NC_INC)/netcdf.mod" ]; then echo "netcdf.mod found"; else echo "netcdf.mod not found"; fi
