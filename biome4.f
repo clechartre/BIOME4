@@ -1,5 +1,5 @@
 c---------------------------------------------------------------------------
-c    The BIOME4-system:       biome4.f       4.2b2       02.11.99
+c    The BIOME4-system:       biome4.f       4.2b2.9001       18.12.23
 c
 c       Copyright (c) 1999 by Jed O. Kaplan
 c     
@@ -14,7 +14,8 @@ c       but WITHOUT ANY WARRANTY; without even the implied warranty of
 c       MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 c       GNU General Public License for more details.
 c
-c       Contact info: jkaplan@bgc-jena.mpg.de
+c       Contact info: jkaplan@bgc-jena.mpg.de (for the original code)
+c                     am315@cam.ac.uk (for the fixes)
 c---------------------------------------------------------------------------
 c
 c                            B I O M E 4 . F
@@ -79,6 +80,10 @@ c       Examined hydrology subroutine to establish sensitivity to soil
 c       physical properties.
 c       Corrected line 2348 percolation function should always be to the 
 c       power 4 (**4) and not scaled to k().
+c      Revised:18.12.23 by Andrea Manica
+c       fixed all instances of uninitialised variables and numerical errors
+c       caught by setting fpe to 0 on ifort. Results are now consistent
+c       when the program is run multiple times with the same inputs.
 c
 c------------------------------------------------------------------------
 
@@ -428,16 +433,19 @@ c------------------------------------------------------------------------------
 c-----Find the PFTs with the highest npp and lai-------------------------
 
       do pft=1,12
-
+ 
        if (grass(pft)) then                 !grass PFT's
-        if (optnpp(pft).gt.grassnpp) then
+c      @FIXED by AM on 18/12/2023
+c       if (optnpp(pft).gt.grassnpp) then
+        if (optnpp(pft).ge.grassnpp) then
          grassnpp=optnpp(pft) 
          grasspft=pft
         end if
 
        else
-
-        if (optnpp(pft).gt.maxnpp) then     !woody PFT's
+c      @FIXED by AM on 18/12/2023
+        if (optnpp(pft).ge.maxnpp) then     !woody PFT's
+c       if (optnpp(pft).gt.maxnpp) then     !woody PFT's
          maxnpp=optnpp(pft)
          pftmaxnpp=pft
         end if
@@ -516,7 +524,6 @@ c-----------------------------------------------------------
        subfiredays=0
        greendays=0
       end if
-
       nppdif=optnpp(wdom)-optnpp(grasspft)
 
       ratio=0.0
@@ -707,14 +714,34 @@ c     put some variables into format for output
       dom=optpft
 
 c------------------------------------------------------
+c     @FIXED by AM on 18/12/2023
+c     @based on a fix by Robert Beyer
+c     the code below used to be below the if (optpft.eq.14)
+c     but it meant that npp and lai were overwritten after the special
+c     definitions for optpft equal to 14
+ 
+      npp=optnpp(dom)
+      lai=optlai(dom)
+      grasslai=optlai(grasspft)
+
+c------------------------------------------------------
       if (optpft.eq.14) then
       
-       npprat=woodnpp/grassnpp
+c      @FIXED by AM on 18/12/2023
+c      if grassnpp is equal to zero, then the ratio goes to infinity
+c      simply define the treepct as 100% (as tehre is no grassnpp
+	
+       if(grassnpp.eq.0.0) then
+        treepct = 1.0
+       else
+        npprat=woodnpp/grassnpp
 
-       treepct=((8./5.)*npprat)-.54
-       
-       if (treepct.lt.0.0) treepct=0.0
-       if (treepct.gt.1.0) treepct=1.0
+        treepct=((8./5.)*npprat)-.54
+     
+        if (treepct.lt.0.0) treepct=0.0
+        if (treepct.gt.1.0) treepct=1.0
+       end if
+      
       
        grasspct=1.-treepct
 
@@ -760,18 +787,17 @@ c------------------------------------------------------
 
       if (optlai(dom).eq.0.0) optpft=0
 
-      npp=optnpp(dom)
-      lai=optlai(dom)
+c------------------------------------------------------
+c     @FIXED by AM on 18/12/2023
+c     @based on a fix by Robert Beyer
+c     this section was moved above the if (optpft.eq.14)
+c     to avoid resetting npp and lai
 
-c      npp=optnpp(wdom)
-c      lai=optlai(wdom)
-      grasslai=optlai(grasspft)
+c      npp=optnpp(dom)
+c      lai=optlai(dom)
+c      grasslai=optlai(grasspft)
 
-c      npp=optnpp(grasspft)
-c      lai=optlai(grasspft)
-
-c      lai=woodylai
-c      lai=grasslai
+c------------------------------------------------------
 
       call newassignbiome
      >(optpft,wdom,grasspft,subpft,npp,woodnpp,grassnpp,subnpp,
@@ -815,8 +841,12 @@ c       Total annual precipitation (hopefully<9999mm):
 c       Total annual PAR MJ.m-2.yr-1
         output(14)=optdata(dom,7)
 
-        output(15)=nint(100*lairatio)
-
+c       @FIXED by AM on 18/12/2023
+c       wetratio was never defined, just dont' use it
+c       @TODO we should update the details of the output to say that 15 is not used
+c       output(15)=nint(100*lairatio)
+        output(15)=0.0
+        
         output(16)=nint(nppdif)
 
         if (lai.lt.2.0) then               !FVC
@@ -944,7 +974,12 @@ c      Monthly soil moisture, mean, top, and bottom layers *100
        
        output(425)=nint(wetlayer(dom,1))
        output(426)=nint(wetlayer(dom,2))
-       output(427)=nint(wetratio(dom)*100.)
+       
+c      @FIXED by AM on 18/12/2023
+c      wetratio was never defined, just dont' use it
+c      @TODO we should update the details of the output to say that 427 is not used
+c      output(427)=nint(wetratio(dom)*100.)
+       output(427)=0.0
        
        output(450)=optdata(dom,450)    !meanKlit
        output(451)=optdata(dom,451)    !meanKsoil
@@ -1356,6 +1391,14 @@ c      This array defines pft-specific maximum Ci/Ca ratios.
      >  / 0.7,0.7,0.6,0.6,0.5,0.5,0.4,0.4,0.4,0.3,0.5,0.3,0.6 /
 
 c---------------------------------------------------------------------------
+c      @FIXED by AM on 18/12/2023
+c      initialise phi to zero. It will only be used for pft=8, which then computes it.
+       phi = 0.0
+c      initialise tendaylai, so that elements that are not computed later do not trigger a nan trap
+       do i=1,40
+        tendaylai(i) = 0.0
+       end do       
+c---------------------------------------------------------------------------
        ca=co2*1e-6
 c---------------------------------------------------------------------------
 c      Initialize day one value for soil moisture
@@ -1439,12 +1482,12 @@ c      Subroutine hydrology returns monthly mean gc & summed fvc value
    
 c      Linearly interpolate the mid-month optgc & ga values to daily values
        call daily(optgc,doptgc)
-    
+      
        call hydrology
      > (dprec,dmelt,dpet,root,k,maxfvc,pft,phentype,wst,
      >  doptgc,meangc,meanfvc,meanwr,meanaet,annaet,mgmin,dphen,dtemp,
      >  grass,runoff,runoffmo,wet,greendays,dayfvc,emax,
-     >  wilt,pftpar)      
+     >  wilt,pftpar)
 c-------------------------------------------------------------------------
 c     Now use the monthly values of fvc & meangc to calculate net & gross
 c     photosynthesis for an "average" day in the month and multiply by the
@@ -1594,16 +1637,21 @@ c     calculate monthly NPP
        mnpp(m)=0.0
       end do
 
-      do m=1,11
+c     @FIXED by AM on 18/12/2023
+c     split the loop so that first we compute mantresp for all m, and then use m+1
+c     when computing mgrowresp(m)
+      do m=1,12
        maintresp(m)=
      > mlresp(m)+backleafresp(m)+mstemresp(m)+mrootresp(m)
+      end do
+      do m=1,11
        mgrowresp(m) = (0.02*(mgpp(m+1)-maintresp(m+1)))
         if (mgrowresp(m).lt.0.0) mgrowresp(m)=0.0
        mnpp(m) = mgpp(m)-(maintresp(m)+mgrowresp(m))
       end do
-      
-      maintresp(12)=
-     >mlresp(12)+backleafresp(12)+mstemresp(12)+mrootresp(12)
+            
+c      maintresp(12)=
+c     >mlresp(12)+backleafresp(12)+mstemresp(12)+mrootresp(12)
       mgrowresp(12) = (0.02*(mgpp(1)-maintresp(1)))
        if (mgrowresp(12).lt.0.0) mgrowresp(12)=0.0
       mnpp(12) = mgpp(12)-(maintresp(12)+mgrowresp(12))
@@ -1776,13 +1824,25 @@ c       outv(100+m)=nint(mlresp(m)*10.)
        outv(160+m)=nint(meangc(m))
        outv(172+m)=nint(monthlylai(m)*100.)
        outv(184+m)=nint(runoffmo(m))
+
+c       @DEBUG       
+c       write(*,*)"loop here"
        
        if (meangc(m).ne.0) then
         mcount=mcount+1
+c       @DEBUG  
+c        write(*,*)anngasum, mgpp(m), meangc(m)
         anngasum=anngasum+(mgpp(m)/meangc(m))  !new line for A/g!
        end if
        
       end do
+      
+   
+
+      
+c     @NOTFIXED  
+      if (anngasum.gt.10000) anngasum=10000       !NOTFIXED quick fix to avoid overflowing
+c      write(*,*)anngasum, mcount
       
       outv(150)=nint((anngasum/mcount)*100.)            !new line for A/g!
 
@@ -2018,22 +2078,43 @@ c      this value is PFT specific.
 c--------------------------------------------------------------------
 c      work out temperature adjusted values of parameters
        tao =  tao25*taoq10**((temp-25.)/10.)
+       
+c      @FIXED by AM 17/12/2023 Swapped the following two chunks of
+c      code to define o2 before it is used
+
+c      @TODO should this below be changed to p????
+c      Need to change the partial pressure of o2 also:
+       mfo2=slo2/1e5
+       o2=p*mfo2 
+
 
 c      Set non-co2-dependent parameters
        ts = o2 / (2.*tao)
        z  = cmass*jtoe*dsun*fpar*twigloss*tune
 
-c      Need to change the partial pressure of o2 also:
-       mfo2=slo2/1e5
-       o2=p*mfo2 
 
 c--------------------------------------------------------------------
        pi = optratio*ca*p
+
+c      @FIXED by AM on 18/12/2023
+c      At very high latitudes, daytime can be zero
+c      To keep it numerically stable, we can simply set daytime to a very small number
+       if (daytime.eq.0.0) daytime=0.01
+
        s  = drespc4*(24./daytime)
+       
+
        c1 = qeffc4*tstress
        c2 = 1.
-       oc = ( (s-teta*s)/(c2-teta*s) )**0.5
 
+c      @FIXED by AM on 18/12/2023
+c      The quantity under the square root can be negative,
+c      leading to an error. We simply floor it to zero before the square root.
+       oc = ( (s-teta*s)/(c2-teta*s) )
+       if (oc.lt.0.0) oc=0
+       oc = oc**0.5
+       
+       
 c      Estimate the optimal value of Vm at ratio=0.8 g(C).m-2.day-1
        if (z.eq.0.0) then
         vmaxc4 = 0.0
@@ -2242,6 +2323,7 @@ c      calculates the actual values of gc and soil moisture
        parameter(alfam=1.4,gm=5.)
 c       parameter(onnw=0.4,offw=0.3)
 
+
        onnw=pftpar(pft,4)
        offw=pftpar(pft,4)
 
@@ -2284,7 +2366,6 @@ c      deq is the daily PET
 c      maxfvc is foliar vegetation cover (related to LAI).
 c      phentype is phenological type (1 evergreen, 2 summergreen, 3 watergreen)
 c      offw is soil moisture threshold for leaf drop
-
 
 c      Calculate vegetation phenology for today     
 
@@ -2331,6 +2412,10 @@ c      the soil and stems (25% after Larcher 1995).
 
        if (fvc.eq.0.0) then
         aet=0.25*deq(d)
+c       @NOTFIXED
+        gmin  = 0.0
+        gc = 0.0
+c       @NOTFIXED        
        else
 c---------------------------
 
@@ -2350,7 +2435,7 @@ c      Calculate aet from gc & Eq (=deq) using eqn from Monteith 1995
 
        end if                 !end phenology sensitive loop
 
-
+       
 c      Not all soil water, or precip. is effectively used, and some water
 c      goes into the new phytomass
 
@@ -2370,6 +2455,7 @@ c      LAI is not sustainable.
 
        if(demand.gt.supply)then
         a = (1. - supply/(deq(d)*alfam))
+
         if (a.lt.0.0) a=0.0
         gsurf    =  -gm*log(a)
         aet      =  supply
@@ -2379,6 +2465,10 @@ c       Constrain gc value to zero!
          gc=0.0
          wilt=.true.
         end if
+c      @NOTFIXED
+       else
+        gc = 0.0
+c      @NOTFIXED
        end if
       
 c      Calculate daily percolation from layer 1 to 2
@@ -3348,7 +3438,7 @@ c     scenarios of phi.
 
 c---------------------------------------------------------------------------
 c
-c     This subroutine models heterotrophic respiration of litter and soíl
+c     This subroutine models heterotrophic respiration of litter and soï¿½l
 c     organic carbon in both a fast and a slow pool.  It assumes equilibrium 
 c     and so decays all of a given year's NPP.  The 13C composition of respired
 c     CO2 is also modelled.  Models are based on the work of Foley, Lloyd and
